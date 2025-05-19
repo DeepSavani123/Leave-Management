@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const User = require("../models/user");
 const Role = require('../models/role');
-
+const Leave = require("../models/leave");
 
 //email : "jeel@gmail.com"
 //password: "jeel@111"
@@ -28,6 +28,16 @@ const adminAddHODAndStaff = async (req, res) => {
             gender,
             role: hodAndStaffRole._id
         });
+
+     await Leave.create({
+        user_id: student._id,
+        total_leave: 30,
+        available_leave: 30,
+        used_leave: 0,
+        attendance_percentage: 0,
+        total_working_days: 200,
+        academic_year: academicYear,
+     });
 
         return res.status(201).json({ success: true, message: "User created successfully" });
 
@@ -108,7 +118,6 @@ const getAllHODAndStaff = async (req, res) => {
                 $project: {
                     role_details: 0,
                     role: 0,
-                    password: 0,
                     updatedAt: 0,
                     __v: 0
                 }
@@ -124,19 +133,35 @@ const getAllHODAndStaff = async (req, res) => {
     }
 };
 
-const adminDeleteHODAndStaff = async(req,res) => {
-      const {id} = req.params;
-     
-      const hod_and_staff = await User.findOne({_id: id})
-       
-      if(!hod_and_staff){
-        return res.status(400).json({ success: false, message: "this HOD/Staff is not found!"})
-      }
 
-      const delete_hod_staff = await User.findByIdAndDelete({_id: hod_and_staff._id})
+const adminDeleteHODAndStaff = async (req, res) => {
+  try {
 
-      return res.status(200).json({ success: true, message: "HOD/Staff deleted successfully!"})
-}
+    const { id } = req.params;
+
+    const hod_and_staff = await User.findOne({ _id: id });
+
+    console.log(hod_and_staff);
+
+    if (!hod_and_staff) {
+      return res
+        .status(400)
+        .json({ success: false, message: "this HOD/Staff is not found!" });
+    }
+
+    await User.findByIdAndDelete({
+      _id: hod_and_staff._id,
+    });
+
+    return res
+      .status(200)
+      .json({ success: true, message: "HOD/Staff deleted successfully!" });
+  } 
+  catch(error) {
+     return res.status(500).json({ success: false, message: 'Internal Server Error!'})
+  }
+
+};
 
 module.exports = {
     adminAddHODAndStaff,
