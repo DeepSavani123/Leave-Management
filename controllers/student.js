@@ -2,6 +2,7 @@
 const bcrypt = require('bcryptjs');
 const Role = require("../models/role");
 const User = require("../models/user");
+const Leave = require("../models/leave");
 
 //email: dhruv@gmail.com
 //password: dhruv@111
@@ -28,6 +29,16 @@ const adminAddStudent = async (req, res) => {
             gender,
             role: studentRole._id
         });
+
+    await Leave.create({
+      user_id: student._id,
+      total_leave: 30,
+      available_leave: 30,
+      used_leave: 0,
+      attendance_percentage: 0,
+      total_working_days: 200,
+      academic_year: academicYear,
+    });
 
 
 
