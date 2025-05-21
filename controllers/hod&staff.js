@@ -34,9 +34,7 @@ const adminAddHODAndStaff = async (req, res) => {
         total_leave: 30,
         available_leave: 30,
         used_leave: 0,
-        attendance_percentage: 0,
-        total_working_days: 200,
-        academic_year: academicYear,
+
      });
 
         return res.status(201).json({ success: true, message: "User created successfully" });
