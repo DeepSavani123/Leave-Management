@@ -24,17 +24,16 @@ const userLeaveSchema = new mongoose.Schema({
 
     academic_year: { 
         type: String, 
-        required: true 
     },
 
     total_working_days: { 
         type: Number, 
-        required: true 
+        default: 200
     },
 
     attendance_percentage: { 
         type: Number, 
-        required: true 
+          
     },
     
 }, { timestamps: true });
