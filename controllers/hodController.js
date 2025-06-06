@@ -10,6 +10,7 @@ const adminAddHODAndStaff = async (req, res) => {
   try {
     const { name, email, password, gender, phone, address } = req.body;
     const hodAndStaffRole = await Role.findOne({ name: "Hod/Staff" });
+    console.log(req.body)
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {

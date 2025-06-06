@@ -28,86 +28,95 @@ const applyLeave = async (req, res) => {
 const approveLeave = async (req, res) => {
   try {
     const { status, id } = req.body;
-    const newStatus = status.toLowerCase();
+    const newStatus = status;
 
     const leaveRequest = await LeaveRequest.findById(id);
-    if (!leaveRequest)
+    if (!leaveRequest) {
       return res.status(404).json({ message: "Leave request not found!" });
+    }
+    
+    const originalStatus = leaveRequest.status
 
-    const originalStatus = leaveRequest.status.toLowerCase();
+    if (originalStatus === "Rejected" && newStatus === "Approved") {
+      return res
+        .status(400)
+        .json({ message: "Cannot approve a leave that has already been rejected." });
+    }
 
-    const userLeave = await Leave.findOne({ user_id: leaveRequest.user_id });
-    if (!userLeave)
-      return res.status(404).json({ message: "Leave record not found!" });
-
-    let leaveDays = 0;
-    const start = new Date(leaveRequest.start_date);
-    const end = new Date(leaveRequest.end_date);
-
-    if (leaveRequest.leave_type === "Full day") {
-      leaveDays = 1;
-    } else if (
+    const isHalfDay =
       leaveRequest.leave_type === "First half" ||
-      leaveRequest.leave_type === "Second half"
-    ) {
-      leaveDays = 0.5;
-    } else {
-      leaveDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+      leaveRequest.leave_type === "Second half";
+    const leaveValuePerDay = isHalfDay ? 0.5 : 1;
+
+    const startDate = new Date(leaveRequest.start_date);
+    const endDate = new Date(leaveRequest.end_date);
+    const totalDays =
+      Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+
+    const totalLeaveDays = leaveValuePerDay * totalDays;
+
+    let usedLeaveAdjustment = 0;
+    if (originalStatus === "Pending" && newStatus === "Approved") {
+      usedLeaveAdjustment = totalLeaveDays;
     }
 
-    if (originalStatus === "approved" && newStatus === "rejected") {
-      await Leave.updateOne(
-        { user_id: leaveRequest.user_id },
-        {
-          $inc: {
-            used_leave: -leaveDays,
-            available_leave: leaveDays,
-          },
-        }
-      );
+  
+    else if (originalStatus === "Approved" && newStatus === "Rejected") {
+      usedLeaveAdjustment = -totalLeaveDays;
     }
 
-    if (
-      (originalStatus === "pending" || originalStatus === "rejected") &&
-      newStatus === "approved"
-    ) {
-      const projectedUsedLeave = userLeave.used_leave + leaveDays;
-      const totalLeaveAllowed = userLeave.total_leave || 30;
 
-      if (projectedUsedLeave > totalLeaveAllowed) {
-        return res.status(400).json({
-          success: false,
-          message: `Cannot approve leave: exceeds total leave limit (${totalLeaveAllowed} days).`,
-        });
+    else if (originalStatus === "Pending" && newStatus === "Rejected") {
+      usedLeaveAdjustment = 0; 
+    }
+
+    await LeaveRequest.updateOne({ _id: id }, { $set: { status: newStatus } });
+
+ 
+    if (usedLeaveAdjustment !== 0) {
+      const userLeave = await Leave.findOne({ user_id: leaveRequest.user_id });
+      if (!userLeave) {
+        return res
+          .status(404)
+          .json({ message: "User leave record not found!" });
       }
 
+      const updatedUsedLeave = userLeave.used_leave + usedLeaveAdjustment;
+
+      if (updatedUsedLeave < 0) {
+        return res
+          .status(400)
+          .json({ message: "Used leave cannot be negative." });
+      }
+
+      if (updatedUsedLeave > userLeave.total_leave) {
+        return res
+          .status(400)
+          .json({ message: "Used leave exceeds total leave." });
+      }
+
+      const updatedAvailableLeave = userLeave.total_leave - updatedUsedLeave;
+
       await Leave.updateOne(
         { user_id: leaveRequest.user_id },
         {
-          $inc: {
-            used_leave: leaveDays,
-            available_leave: -leaveDays,
+          $set: {
+            used_leave: updatedUsedLeave,
+            available_leave: updatedAvailableLeave,
           },
         }
       );
     }
-
-    await LeaveRequest.updateOne(
-      { _id: leaveRequest._id },
-      { $set: { status } }
-    );
 
     return res.status(200).json({
       success: true,
-      message: `Leave request ${newStatus} successfully!`,
+      message: `Leave request ${newStatus.toLowerCase()} successfully!`,
     });
   } catch (err) {
-    return res.status(400).json({ success: false, message: err.message });
+    console.error("Leave approval error:", err.message);
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
-
-
-
 
 
 const getIndividualLeave = async (req, res) => {
@@ -283,53 +292,73 @@ const getAllLeaves = async (req, res) => {
     const pageNumber = parseInt(page, 10);
     const limitNumber = parseInt(limit, 10);
     const skip = (pageNumber - 1) * limitNumber;
-
-    const fetchedLeaves = await LeaveRequest.aggregate([
-      {
-        $lookup: {
-          from: "users",
-          localField: "user_id",
-          foreignField: "_id",
-          as: "user",
-          pipeline: [{ $project: { name: 1, _id: 0 } }],
+  const fetchedLeaves = await LeaveRequest.aggregate([
+  {
+    $lookup: {
+      from: "users",
+      localField: "user_id",
+      foreignField: "_id",
+      as: "user",
+      pipeline: [
+        {
+          $lookup: {
+            from: "roles",
+            localField: "role",
+            foreignField: "_id",
+            as: "role",
+            pipeline: [
+              { $project: { name: 1, _id: 0 } }
+            ]
+          }
         },
-      },
-      { $unwind: { path: "$user" } },
-      { $addFields: { name: "$user.name" } },
-      { $match: searchFilter },
-      {
-        $project: {
-          name: 1,
-          start_date: 1,
-          end_date: 1,
-          leave_type: 1,
-          reason: 1,
-          status: 1,
-        },
-      },
-      {
-        $facet: {
-          data: [{ $sort: sortOptions }, { $skip: skip }, { $limit: limitNumber }],
-          totalCount: [{ $count: "count" }],
-        },
-      },
-    ]);
+        { $unwind: "$role" },
+        { $project: { name: 1, role: "$role.name" } }
+      ]
+    },
+  },
+  { $unwind: { path: "$user" } },
+  {
+    $addFields: {
+      name: "$user.name",
+      role: "$user.role"
+    }
+  },
+  { $match: searchFilter },
+  {
+    $project: {
+      name: 1,
+      role: 1,
+      start_date: 1,
+      end_date: 1,
+      leave_type: 1,
+      reason: 1,
+      status: 1,
+    },
+  },
+  {
+    $facet: {
+      data: [{ $sort: sortOptions }, { $skip: skip }, { $limit: limitNumber }],
+      totalCount: [{ $count: "count" }],
+    },
+  },
+]);
 
-    const allLeaves = fetchedLeaves[0]?.data;
-    const totalLeaves = fetchedLeaves[0]?.totalCount[0]?.count || 0;
-    const totalPages = Math.ceil(totalLeaves / limitNumber);
+const allLeaves = fetchedLeaves[0]?.data;
+const totalLeaves = fetchedLeaves[0]?.totalCount[0]?.count || 0;
+const totalPages = Math.ceil(totalLeaves / limitNumber);
 
-    if (!allLeaves) return res.status(400).json({ success: false, message: leave.leavesNotFound });
+if (!allLeaves) return res.status(400).json({ success: false, message: leave.leavesNotFound });
 
-    return res.status(200).json({
-      success: true,
-      data: allLeaves,
-      page: pageNumber,
-      limit: limitNumber,
-      totalLeaves,
-      totalPages,
-      message: leave.allLeavesFetched,
-    });
+return res.status(200).json({
+  success: true,
+  data: allLeaves,
+  page: pageNumber,
+  limit: limitNumber,
+  totalLeaves,
+  totalPages,
+  message: leave.allLeavesFetched,
+});
+
   } catch (err) {
     return res.status(400).json({ success: false, message: error.defaultError });
   }
