@@ -9,9 +9,6 @@ const callbackURL = process.env.GOOGLE_CALLBACK_URL;
 const messages = require("../../constants/messages.js");  
 const { auth, error: errorMessages, user } = messages;
 
-
-
-
 passport.use(
   new GoogleStrategy(
     {
@@ -22,11 +19,11 @@ passport.use(
     async (accessToken, refreshToken, profile, done) => {
       try {
         if (!profile.emails || profile.emails.length === 0) {
-          throw new Error(auth.userNotFound);  // from messages.auth.userNotFound
+          throw new Error(auth.userNotFound);  
         }
 
         if (!profile.photos || profile.photos.length === 0) {
-          throw new Error(errorMessages.defaultError);  // from messages.error.defaultError
+          throw new Error(errorMessages.defaultError);  
         }
 
         const email = profile.emails[0].value;
@@ -37,7 +34,7 @@ passport.use(
           const defaultRole = await Role.findOne({ name: "student" });
 
           user = await User.create({
-            name: profile.displayName,
+            name: profile.displayName || "No Name",
             email,
             password: "GOOGLE_AUTH",
             gender: "Male",

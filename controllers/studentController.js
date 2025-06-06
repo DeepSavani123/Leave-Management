@@ -96,7 +96,7 @@ const getAllStudents = async (req, res) => {
     };
 
     if (search) {
-      searchFilter.name = { $regex: search, $options: "i" };
+      searchFilter.email = { $regex: search, $options: "i" };
     }
 
     const pageNumber = parseInt(page, 10);

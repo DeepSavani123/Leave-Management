@@ -28,35 +28,36 @@ const leaveRequestAchieved = async (req, res) => {
     const skip = (pageNumber - 1) * limitNumber;
 
     const achievedLeave = await LeaveRequest.aggregate([
-      {
-        $lookup: {
-          from: "users",
-          localField: "user_id",
-          foreignField: "_id",
-          as: "user",
-          pipeline: [
-            {
-              $project: {
-                name: 1,
-                _id: 0,
-              },
-            },
-          ],
+    {
+    $lookup: {
+      from: "users",
+      localField: "user_id",
+      foreignField: "_id",
+      as: "user",
+      pipeline: [
+        {
+          $lookup: {
+            from: "roles",
+            localField: "role",
+            foreignField: "_id",
+            as: "role",
+            pipeline: [
+              { $project: { name: 1, _id: 0 } }
+            ]
+          }
         },
-      },
-
-      {
-        $unwind: {
-          path: "$user",
-        },
-      },
-
-      {
-        $addFields: {
-          name: "$user.name",
-        },
-      },
-
+        { $unwind: "$role" },
+        { $project: { name: 1, role: "$role.name" } }
+      ]
+    },
+  },
+   { $unwind: { path: "$user" } },
+  {
+    $addFields: {
+      name: "$user.name",
+      role: "$user.role"
+    }
+  },
       {
         $match: searchFilter,
       },
@@ -64,6 +65,7 @@ const leaveRequestAchieved = async (req, res) => {
       {
         $project: {
           name: 1,
+          role: 1,
           start_date: 1,
           end_date: 1,
           leave_type: 1,
